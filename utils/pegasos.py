@@ -30,7 +30,7 @@ class pegasos():
                 obj = self.func_obj(y)
             grad = tape.gradient(obj,y)
             y_new = y - eta_t*grad
-            print(y.numpy(),y_new.numpy(),)
+            # print(y.numpy(),y_new.numpy(),)
             error.append(norm(y.numpy()-y_new.numpy()))
             # print(y.numpy(),y_new.numpy(),error[-1])
             y.assign(y_new)

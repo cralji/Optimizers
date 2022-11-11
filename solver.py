@@ -1,12 +1,17 @@
+#%% 
 from numpy import zeros,zeros_like,where,abs,minimum,concatenate
 from numpy.linalg import eigvals,norm
 from utils.pegasos import pegasos
 
+import matplotlib.pyplot as plt
 
 from tensorflow import matmul,transpose
 
 def proximal_point_subproblem(y,Qw,Qwc,rw,xw,xwc,gamma):
-    obj = 0.5*transpose(y)@Qw@y+transpose(y)@(Qwc@xwc+rw)+0.5*gamma*matmul(y-xw,y-xw,transpose_a=True)
+    if Qwc.shape[-1] ==0:
+        obj= 0.5*transpose(y)@Qw@y+transpose(y)@(rw)+0.5*gamma*matmul(y-xw,y-xw,transpose_a=True)
+    else:
+        obj= 0.5*transpose(y)@Qw@y+transpose(y)@(Qwc@xwc+rw)+0.5*gamma*matmul(y-xw,y-xw,transpose_a=True)
     return obj
 
 def compute_kkt_res(Q,x,l,u,r):
@@ -28,7 +33,12 @@ def compute_kkt_res(Q,x,l,u,r):
     g = concatenate(g,axis=0)
     return norm(g)
 
-    
+def extract_sets(x,l,u):
+    L = where(x <= l)[0]
+    U = where(x >= u)[0]
+    M = where((x < u)&(x > l))[0]
+    return L,U,M
+        
 
 class RPPHom():
     """
@@ -51,29 +61,25 @@ class RPPHom():
         N,_ = Q.shape
         x = zeros((N,1))
         k = 0
-        L = []
-        U = []
-        W = []
-        Wc = []
+        log_kkt_res = [kkt_res]
         indx = list(range(N))
         
         while k<=self.max_iter and kkt_res>=self.tol:
-            # asiggn sets 
-            aux = Q.dot(x) + r
-            L = where(aux<=-self.epsilon)[0].tolist()
-            U = where(aux>=self.epsilon)[0].tolist()
-            if self.epsilon==0:
-                M = where(aux == self.epsilon)[0].tolist()
-            else:
-                M = where(abs(aux) <= self.epsilon)[0].tolist()
-            W = [*set(L + U + M)] # unique values
+            # asiggn sets
+            L,U,M = extract_sets(x, l, u)
+            
+            aux = Q.T.dot(x) + r
+            U_ = U[where(aux[U]>=self.epsilon)[0]].tolist()
+            L_ = L[where(aux[L]<=-self.epsilon)[0]].tolist()
+            
+            W = [*set(L_ + U_ + M.tolist())] # unique values
             Wc = [i for i in indx if i not in W]
             W.sort() # ascending index sort
             Wc.sort() # ascending index sort
             Qw = Q[W][:,W]
-            Qwc = Q[W][:,Wc]
             rw = r[W]
             xw = x[W]
+            Qwc = Q[W][:,Wc]
             xwc = x[Wc]
             gamma = self.delta - minimum(0,eigvals(Qw).real.min())
             func = lambda y: proximal_point_subproblem(y,Qw,Qwc,rw,xw,xwc,gamma)
@@ -86,11 +92,30 @@ class RPPHom():
             x[ind_wc_u] = u[ind_wc_u]
 
             kkt_res = compute_kkt_res(Q,x,l,u,r)
+            log_kkt_res.append(kkt_res)
             k += 1
+            print('k:{} ---- kkt_res:{}'.format(k,kkt_res))
+            plt.plot(log_kkt_res)
+            del y
+        plt.show()
         if k < self.max_iter:
             self.converged = True
         else:
             self.converged = False
         self.x
         return x
-        
+
+#%% Test
+from numpy import array,ones,ones_like
+Q = array([[-1,2,0,1],
+           [2,-1,1,0],
+           [0,1,6,-1],
+           [1,0,-1,-2]])
+r = array([4,9/2,-1,-1]).reshape(-1,1)
+l = -1*ones_like(r)
+u = ones_like(r)
+
+solver = RPPHom()
+x = solver.call(Q,r,l,u)
+
+# %%
