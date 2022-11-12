@@ -23,7 +23,7 @@ class pegasos():
     
     def solver(self):
         error = []
-        y = Variable(zeros([self.D,1])) if self.D!=1 else Variable(0.0)
+        y = Variable(zeros([self.D,1]))# if self.D!=1 else Variable(0.0)
         for t in range(1,1+self.T):
             eta_t = 1/(self.lam*t)
             with GradientTape() as tape:

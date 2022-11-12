@@ -1,11 +1,13 @@
 #%% 
-from numpy import zeros,zeros_like,where,abs,minimum,concatenate
+from numpy import zeros,zeros_like,where,abs,minimum,concatenate,all
 from numpy.linalg import eigvals,norm
+from numpy.random import uniform
 from utils.pegasos import pegasos
 
 import matplotlib.pyplot as plt
 
-from tensorflow import matmul,transpose
+from tensorflow import matmul,transpose,Variable
+from tensorflow.keras.optimizers import SGD
 
 def proximal_point_subproblem(y,Qw,Qwc,rw,xw,xwc,gamma):
     if Qwc.shape[-1] ==0:
@@ -63,14 +65,15 @@ class RPPHom():
         k = 0
         log_kkt_res = [kkt_res]
         indx = list(range(N))
-        
+        if all(x==l):
+            x = uniform(l[0,0],u[0,0],N).reshape(-1,1)
         while k<=self.max_iter and kkt_res>=self.tol:
             # asiggn sets
             L,U,M = extract_sets(x, l, u)
             
             aux = Q.T.dot(x) + r
-            U_ = U[where(aux[U]>=self.epsilon)[0]].tolist()
-            L_ = L[where(aux[L]<=-self.epsilon)[0]].tolist()
+            U_ = U[where(aux[U]>=0)[0]].tolist() #self.epsilon
+            L_ = L[where(aux[L]<=0)[0]].tolist() #-self.epsilon
             
             W = [*set(L_ + U_ + M.tolist())] # unique values
             Wc = [i for i in indx if i not in W]
@@ -82,15 +85,25 @@ class RPPHom():
             Qwc = Q[W][:,Wc]
             xwc = x[Wc]
             gamma = self.delta - minimum(0,eigvals(Qw).real.min())
-            func = lambda y: proximal_point_subproblem(y,Qw,Qwc,rw,xw,xwc,gamma)
-            sol_sub_problem = pegasos(func_obj=func,D=N,lam=gamma)
-            y = sol_sub_problem.solver()
+            # func = lambda y: proximal_point_subproblem(y,Qw,Qwc,rw,xw,xwc,gamma)
+            # sol_sub_problem = pegasos(func_obj=func,D=Qwc.shape[0],lam=gamma)
+            ### solution a proximal problem
+            y = Variable(zeros([Qw.shape[0],1]))
+            obj= lambda: 0.5*transpose(y)@Qw@y+transpose(y)@(Qwc@xwc+rw)+0.5*gamma*matmul(y-xw,y-xw,transpose_a=True)
+            for t in range(1,1000):
+                opt = SGD(learning_rate=1/(t*gamma))
+                new_count = opt.minimize(obj,[y]).numpy()
+            y = y.numpy()
+            
+            # y = sol_sub_problem.solver()
             x[W] = y
             ind_wc_l = [i for i in Wc if i in L]
             x[ind_wc_l] = l[ind_wc_l]
             ind_wc_u = [i for i in Wc if i in U]
             x[ind_wc_u] = u[ind_wc_u]
-
+            
+            x[where(x<l)] = l[where(x<l)]
+            x[where(x>u)] = u[where(x>u)]
             kkt_res = compute_kkt_res(Q,x,l,u,r)
             log_kkt_res.append(kkt_res)
             k += 1
@@ -102,20 +115,32 @@ class RPPHom():
             self.converged = True
         else:
             self.converged = False
-        self.x
+        self.x =x
         return x
 
 #%% Test
-from numpy import array,ones,ones_like
-Q = array([[-1,2,0,1],
-           [2,-1,1,0],
-           [0,1,6,-1],
-           [1,0,-1,-2]])
-r = array([4,9/2,-1,-1]).reshape(-1,1)
-l = -1*ones_like(r)
-u = ones_like(r)
+# from numpy import array,ones,ones_like
+# Q = array([[-1,-1,-2,-1],
+#             [-1,-1,-2,-1],
+#             [-2,-2,0,-1],
+#             [-1,-1,-1,0]])
 
-solver = RPPHom()
-x = solver.call(Q,r,l,u)
+# r = array([1,0,1,1]).reshape(-1,1)
+# l = zeros_like(r)
+# u = 2*ones_like(r)
+
+# solver = RPPHom()
+# x = solver.call(Q,r,l,u)
 
 # %%
+# from numpy import array,ones,ones_like
+# Q = array([[-1,2,0,1],
+#             [2,-1,1,0],
+#             [0,1,6,-1],
+#             [1,0,-1,-2]])
+# r = array([4,9/2,-1,-1]).reshape(-1,1)
+# l = -1*ones_like(r)
+# u = ones_like(r)
+
+# solver = RPPHom()
+# x = solver.call(Q,r,l,u)
