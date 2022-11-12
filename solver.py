@@ -58,7 +58,7 @@ class RPPHom():
         self.delta = delta
         self.epsilon = epsilon
     
-    def call(self, Q,r,l,u):
+    def call(self, Q,r,l,u,plot = False,verbose = False):
         kkt_res = 2*self.tol
         N,_ = Q.shape
         x = zeros((N,1))
@@ -91,8 +91,11 @@ class RPPHom():
             y = Variable(zeros([Qw.shape[0],1]))
             obj= lambda: 0.5*transpose(y)@Qw@y+transpose(y)@(Qwc@xwc+rw)+0.5*gamma*matmul(y-xw,y-xw,transpose_a=True)
             for t in range(1,1000):
+                y_old = y.numpy()
                 opt = SGD(learning_rate=1/(t*gamma))
                 new_count = opt.minimize(obj,[y]).numpy()
+                if norm(y_old-y.numpy()) < self.tol:
+                    break
             y = y.numpy()
             
             # y = sol_sub_problem.solver()
@@ -107,40 +110,16 @@ class RPPHom():
             kkt_res = compute_kkt_res(Q,x,l,u,r)
             log_kkt_res.append(kkt_res)
             k += 1
-            print('k:{} ---- kkt_res:{}'.format(k,kkt_res))
-            plt.plot(log_kkt_res)
+            if verbose:
+                print('k:{} ---- kkt_res:{}'.format(k,kkt_res))
             del y
-        plt.show()
+            
+        if plot:
+            plt.plot(log_kkt_res)
+            plt.show()
         if k < self.max_iter:
             self.converged = True
         else:
             self.converged = False
         self.x =x
         return x
-
-#%% Test
-# from numpy import array,ones,ones_like
-# Q = array([[-1,-1,-2,-1],
-#             [-1,-1,-2,-1],
-#             [-2,-2,0,-1],
-#             [-1,-1,-1,0]])
-
-# r = array([1,0,1,1]).reshape(-1,1)
-# l = zeros_like(r)
-# u = 2*ones_like(r)
-
-# solver = RPPHom()
-# x = solver.call(Q,r,l,u)
-
-# %%
-# from numpy import array,ones,ones_like
-# Q = array([[-1,2,0,1],
-#             [2,-1,1,0],
-#             [0,1,6,-1],
-#             [1,0,-1,-2]])
-# r = array([4,9/2,-1,-1]).reshape(-1,1)
-# l = -1*ones_like(r)
-# u = ones_like(r)
-
-# solver = RPPHom()
-# x = solver.call(Q,r,l,u)
